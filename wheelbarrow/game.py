@@ -38,6 +38,25 @@ class Game:
                     payload = json.loads(payload[2:])
                     yield payload
 
+    def handle_updates(self):
+        for update in self.get_latest_updates():
+            action = update[0]
+            logger.info("Received game update: {}", update)
+            if action == "setup":
+                settings = update[1]
+                self.pid = settings["selfPeerId"]
+                self.starting_lives = settings["rules"]["startingLives"]["value"]
+                self.max_lives = settings["rules"]["maxLives"]["value"]
+                logger.info("Processed game update: {}", update)
+            elif action == "setRules":
+                settings = update[1]
+                if "startingLives" in settings:
+                    self.starting_lives = settings["startingLives"]
+                    logger.info("Processed game update: {}", update)
+                elif "maxLives" in settings:
+                    self.max_lives = settings["maxLives"]
+                    logger.info("Processed game update: {}", update)
+
     def start(self):
         # Navigate to the game page
         self.driver.get(self.url)
@@ -60,17 +79,11 @@ class Game:
                 pass
         # Wait until we've completed setup before proceeding
         while self.pid == -1:
-            for update in self.get_latest_updates():
-                action = update[0]
-                logger.info("Received game update: {}", update)
-                if action == "setup":
-                    settings = update[1]
-                    self.pid = settings["selfPeerId"]
-                    logger.info("Processed game update: {}", update)
-                    break
+            self.handle_updates()
         # Main loop: try joining a round, then playing, then repeating
         while True:
             time.sleep(1)
+            self.handle_updates()
             try:
                 button = self.driver.find_element_by_xpath(
                     '//button[text()="Join game"]'
@@ -87,6 +100,8 @@ class Round:
     def __init__(self, game: Game):
         self.game = game
         self.started = False
+        self.starting_lives = game.starting_lives
+        self.max_lives = game.max_lives
         self.my_pid = self.game.pid
         self.my_ready = True
         self.bomb_pid = -2
@@ -101,12 +116,21 @@ class Round:
                 action = update[0]
                 logger.info("Received game update: {}", update)
                 if not self.started:
-                    if action == "setMilestone":
+                    if action == "setRules":
+                        settings = update[1]
+                        if "startingLives" in settings:
+                            self.starting_lives = settings["startingLives"]
+                            logger.info("Processed game update: {}", update)
+                        elif "maxLives" in settings:
+                            self.max_lives = settings["maxLives"]
+                            logger.info("Processed game update: {}", update)
+                    elif action == "setMilestone":
                         settings = update[1]
                         if settings["name"] == "round":
                             self.bomb_pid = settings["currentPlayerPeerId"]
                             self.bomb_syllable = settings["syllable"]
                             self.started = True
+                            self.bot.on_start(self.starting_lives, self.max_lives)
                             logger.info("Processed game update: {}", update)
                 else:
                     if action == "setMilestone":
@@ -138,6 +162,10 @@ class Round:
                     elif action == "bonusAlphabetCompleted":
                         if update[1] == self.my_pid:
                             self.bot.on_bonus_life()
+                        logger.info("Processed game update: {}", update)
+                    elif action == "livesLost":
+                        if update[1] == self.my_pid:
+                            self.bot.on_lost_life()
                         logger.info("Processed game update: {}", update)
             # We are given the bomb, so we should submit a word
             if self.my_pid == self.bomb_pid and self.my_ready:

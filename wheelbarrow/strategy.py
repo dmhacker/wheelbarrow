@@ -39,7 +39,7 @@ def get_syllables(word: str):
 AVAILABLE_MASK = ~get_word_mask("kwyz")
 
 
-def get_word_ranking(word_mask: int, player_mask: int):
+def get_word_ranking(word_mask: int, player_mask: int, lives: int, max_lives: int):
     """
     The word ranking system is at the heart of the bot.
     Given what the player's current bonus letters are, it will
@@ -53,9 +53,12 @@ def get_word_ranking(word_mask: int, player_mask: int):
         x = (x + (x >> 4)) & 0x0F0F0F0F0F0F0F0F
         return ((x * 0x0101010101010101) & 0xFFFFFFFFFFFFFFFF) >> 56
 
+    word_count = popcount(word_mask & AVAILABLE_MASK)
     prev_count = popcount(player_mask & AVAILABLE_MASK)
     next_count = popcount((player_mask | word_mask) & AVAILABLE_MASK)
-    return (next_count - prev_count, -popcount(word_mask & AVAILABLE_MASK))
+    if lives < max_lives:
+        return (next_count - prev_count, -word_count)
+    return -word_count
 
 
 class Corpus:
@@ -109,7 +112,8 @@ class Typist:
     """
 
     def __init__(self):
-        self.accuracy = 0.92
+        self.word_accuracy = 0.8
+        self.keystroke_accuracy = 0.92
         self.keystroke_delay_avg = 0.11
         self.keystroke_delay_std = 0.04
         self.initial_delay_avg = 0.9
@@ -147,16 +151,21 @@ class Typist:
             0, int(np.round(np.random.exponential(self.error_count_lambda, 1)[0]))
         )
 
-    def act(self, word: str, human: bool):
+    def act(self, word: str, syllable: str, human: bool, lives: int, max_lives: int):
         if not human:
             return [("press", word + Keys.RETURN)]
         actions = []
         actions.append(("wait", self.__initial_delay(len(word))))
-        accuracy = self.accuracy
         previous_errors = 0
+        fail_probability = (1.0 + (self.word_accuracy - 1) / (max_lives - 1) * (lives - 1))
+        fail_destiny = random.random() > fail_probability
+        fail_index = word.index(syllable) + len(syllable)
+        fail_index += random.randrange(0, len(word) - fail_index + 1)
         for i, c in enumerate(word):
+            if fail_destiny and fail_index == i:
+                break
             remaining = len(word) - i
-            if random.random() > accuracy:
+            if random.random() > self.keystroke_accuracy:
                 mistakes = int(np.ceil(self.__error_count()))
                 for j in range(mistakes):
                     mc = random.choice(string.ascii_lowercase)
@@ -189,6 +198,8 @@ class Bot:
         self.human = human
         self.typist = Typist()
         self.syllables = defaultdict(dict)
+        self.lives = 0
+        self.max_lives = 0
         for word, mask in corpus.words.items():
             if len(word) > 12 and human:
                 continue
@@ -201,7 +212,7 @@ class Bot:
         word_map = self.syllables[syllable]
         words = list(word_map.items())
         (best_word, _) = max(
-            words, key=lambda x: get_word_ranking(x[1], self.bonus_mask)
+            words, key=lambda x: get_word_ranking(x[1], self.bonus_mask, self.lives, self.max_lives)
         )
         return best_word
 
@@ -209,10 +220,18 @@ class Bot:
         word = self.search_syllable(syllable)
         if word is None:
             return []
-        return self.typist.act(word, self.human)
+        return self.typist.act(word, syllable, self.human, self.lives, self.max_lives)
+
+    def on_start(self, lives, max_lives):
+        self.lives = lives
+        self.max_lives = max_lives
 
     def on_bonus_life(self):
         self.bonus_mask = 0
+        self.lives += 1
+
+    def on_lost_life(self):
+        self.lives -= 1
 
     def on_correct_word(self, word):
         self.bonus_mask |= get_word_mask(word)
