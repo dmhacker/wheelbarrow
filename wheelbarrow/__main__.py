@@ -1,3 +1,4 @@
 import game
+import sys
 
-game.Game("JWQA").connect()
+game.Game(sys.argv[1]).start()
