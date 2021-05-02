@@ -2,6 +2,7 @@ import strategy
 
 import json
 import time
+import random
 
 from selenium import webdriver
 from selenium.webdriver.common.desired_capabilities import DesiredCapabilities
@@ -11,9 +12,9 @@ from selenium.webdriver.common.keys import Keys
 
 
 class Game:
-    def __init__(self, room: str):
+    def __init__(self, room: str, human: bool):
         self.url = 'https://jklm.fun/{}'.format(room)
-        self.corpus = strategy.english_corpus()
+        self.human = human
         capabilities = DesiredCapabilities.CHROME
         capabilities["goog:loggingPrefs"] = {"performance": "ALL"}
         self.driver = webdriver.Chrome(
@@ -21,6 +22,7 @@ class Game:
             desired_capabilities=capabilities,
         )
         self.pid = -1
+        self.corpus = strategy.english_corpus()
 
     def get_latest_updates(self):
         logs = self.driver.get_log("performance")
@@ -75,10 +77,12 @@ class Round:
         self.game = game
         self.started = False
         self.my_pid = self.game.pid
+        self.my_submitted = False
         self.bomb_pid = -2
         self.bomb_syllable = ""
         self.bomb_word = ""
         self.searcher = strategy.Searcher(self.game.corpus)
+        self.human = self.game.human
 
     def start(self):
         while True:
@@ -103,28 +107,40 @@ class Round:
                         print(update)
                         self.bomb_pid = update[1]
                         self.bomb_syllable = update[2]
+                        self.my_submitted = False
                     elif action == "setPlayerWord":
                         print(update)
                         self.bomb_word = update[2]
                     elif action == "correctWord":
+                        print(update)
                         if update[1]["playerPeerId"] == self.my_pid:
-                            print(update)
                             self.searcher.confirm_correct(self.bomb_word)
                         else:
-                            print(update)
                             self.searcher.confirm_used(self.bomb_word)
                     elif action == "failWord":
-                        if update[2] == "notInDictionary":
-                            print(update)
+                        print(update)
+                        if update[1] == self.my_pid:
+                            self.searcher.confirm_used(self.bomb_word)
+                            self.my_submitted = False
+                        else:
                             self.searcher.confirm_used(self.bomb_word)
                     elif action == "bonusAlphabetCompleted":
+                        print(update)
                         if update[1] == self.my_pid:
-                            print(update)
                             self.searcher.confirm_bonus()
             # We are given the bomb, so we should submit a word
-            if self.my_pid == self.bomb_pid:
+            if self.my_pid == self.bomb_pid and not self.my_submitted:
                 word = self.searcher.search(self.bomb_syllable)
                 if word is not None:
-                    actions = ActionChains(self.game.driver)
-                    actions.send_keys(word + Keys.RETURN)
-                    actions.perform()
+                    if self.human:
+                        time.sleep(1.5 * random.random() + 0.5)
+                        for c in word + Keys.RETURN:
+                            time.sleep(random.random() * 0.1 + 0.1)
+                            actions = ActionChains(self.game.driver)
+                            actions.send_keys(c)
+                            actions.perform()
+                    else:
+                        actions = ActionChains(self.game.driver)
+                        actions.send_keys(word + Keys.RETURN)
+                        actions.perform()
+                    self.my_submitted = True
