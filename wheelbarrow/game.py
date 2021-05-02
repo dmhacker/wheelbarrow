@@ -77,7 +77,7 @@ class Round:
         self.game = game
         self.started = False
         self.my_pid = self.game.pid
-        self.my_submitted = False
+        self.my_ready = True
         self.bomb_pid = -2
         self.bomb_syllable = ""
         self.bomb_word = ""
@@ -107,7 +107,7 @@ class Round:
                         print(update)
                         self.bomb_pid = update[1]
                         self.bomb_syllable = update[2]
-                        self.my_submitted = False
+                        self.my_ready = True
                     elif action == "setPlayerWord":
                         print(update)
                         self.bomb_word = update[2]
@@ -121,7 +121,7 @@ class Round:
                         print(update)
                         if update[1] == self.my_pid:
                             self.searcher.confirm_used(self.bomb_word)
-                            self.my_submitted = False
+                            self.my_ready = True
                         else:
                             self.searcher.confirm_used(self.bomb_word)
                     elif action == "bonusAlphabetCompleted":
@@ -129,7 +129,7 @@ class Round:
                         if update[1] == self.my_pid:
                             self.searcher.confirm_bonus()
             # We are given the bomb, so we should submit a word
-            if self.my_pid == self.bomb_pid and not self.my_submitted:
+            if self.my_pid == self.bomb_pid and self.my_ready:
                 word = self.searcher.search(self.bomb_syllable)
                 if word is not None:
                     if self.human:
@@ -143,4 +143,4 @@ class Round:
                         actions = ActionChains(self.game.driver)
                         actions.send_keys(word + Keys.RETURN)
                         actions.perform()
-                    self.my_submitted = True
+                    self.my_ready = False
