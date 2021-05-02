@@ -1,10 +1,12 @@
 from collections import defaultdict
 from loguru import logger
-from nltk.corpus import brown, inaugural, wordnet
+from selenium.webdriver.common.keys import Keys
 
 import requests
 import string
 import time
+import numpy as np
+import random
 
 
 def get_word_mask(word: str):
@@ -44,6 +46,7 @@ def get_word_ranking(word_mask: int, player_mask: int):
     derive a relative ranking of the word, where a higher ranking indicates
     that the word is more desirable to be played.
     """
+
     def popcount(x):
         x -= (x >> 1) & 0x5555555555555555
         x = (x & 0x3333333333333333) + ((x >> 2) & 0x3333333333333333)
@@ -60,6 +63,7 @@ class Corpus:
     A corpus represents a list of acceptable words that Bomb Party takes.
     All of the words in a corpus are expected to belong to the same language.
     """
+
     def __init__(self):
         self.words = {}
 
@@ -97,23 +101,101 @@ def english_corpus():
     return corpus
 
 
-class Searcher:
+class Typist:
     """
-    A searcher is spawned for the duration of a Bomb Party game round and
-    provides an interface through which words can be looked up by syllable.
-    The searcher also keeps track of the current player's bonus points and
-    also which words were used in the past.
+    Controls how a word is typed out. The typist interface provides
+    support for mimicing human behaviour, so that the bot doesn't appear
+    overpowered.
     """
 
-    def __init__(self, corpus: Corpus):
-        self.syllables = defaultdict(dict)
-        for word, mask in corpus.words.items():
-            for syllable in get_syllables(word):
-                self.syllables[syllable][word] = mask
+    def __init__(self):
+        self.accuracy = 0.92
+        self.keystroke_delay_avg = 0.11
+        self.keystroke_delay_std = 0.04
+        self.initial_delay_avg = 0.9
+        self.initial_delay_std = 0.2
+        self.backtrack_delay_avg = 0.5
+        self.backtrack_delay_std = 0.3
+        self.error_count_lambda = 0.85
+
+    def __keystroke_delay(self, word_size, previous_errors):
+        return max(
+            0,
+            np.random.normal(
+                self.keystroke_delay_avg - word_size * 0.001 - previous_errors * 0.01,
+                self.keystroke_delay_std,
+                1,
+            )[0],
+        )
+
+    def __initial_delay(self, word_size):
+        return max(
+            0,
+            np.random.normal(
+                self.initial_delay_avg - word_size * 0.02, self.initial_delay_std, 1
+            )[0],
+        )
+
+    def __backtrack_delay(self):
+        return max(
+            0,
+            np.random.normal(self.backtrack_delay_avg, self.backtrack_delay_std, 1)[0],
+        )
+
+    def __error_count(self):
+        return max(
+            0, int(np.round(np.random.exponential(self.error_count_lambda, 1)[0]))
+        )
+
+    def act(self, word: str, human: bool):
+        if not human:
+            return [("press", word + Keys.RETURN)]
+        actions = []
+        actions.append(("wait", self.__initial_delay(len(word))))
+        accuracy = self.accuracy
+        previous_errors = 0
+        for i, c in enumerate(word):
+            remaining = len(word) - i
+            if random.random() > accuracy:
+                mistakes = int(np.ceil(self.__error_count()))
+                for j in range(mistakes):
+                    mc = random.choice(string.ascii_lowercase)
+                    if j > 0 and i + j < len(word) and random.random() < 0.7:
+                        mc = word[i + j]
+                    actions.append(("wait", self.__keystroke_delay(remaining, previous_errors)))
+                    actions.append(("press", mc))
+                actions.append(("wait", self.__backtrack_delay()))
+                for _ in range(mistakes):
+                    actions.append(("wait", self.__keystroke_delay(remaining, previous_errors)))
+                    actions.append(("press", Keys.BACKSPACE))
+                previous_errors += 1
+            actions.append(("wait", self.__keystroke_delay(remaining, previous_errors)))
+            actions.append(("press", c))
+        actions.append(("press", Keys.RETURN))
+        return actions
+
+
+class Bot:
+    """
+    A bot is spawned for the duration of a Bomb Party game round and
+    provides an interface through which words can be looked up by syllable.
+    The bot also keeps track of its bonus points and also which words
+    were used in the past.
+    """
+
+    def __init__(self, corpus: Corpus, human: bool):
         self.bonus_mask = 0
         self.last_mask = 0
+        self.human = human
+        self.typist = Typist()
+        self.syllables = defaultdict(dict)
+        for word, mask in corpus.words.items():
+            if len(word) > 12 and human:
+                continue
+            for syllable in get_syllables(word):
+                self.syllables[syllable][word] = mask
 
-    def search(self, syllable: str):
+    def search_syllable(self, syllable: str):
         if syllable not in self.syllables:
             return None
         word_map = self.syllables[syllable]
@@ -123,14 +205,20 @@ class Searcher:
         )
         return best_word
 
-    def confirm_bonus(self):
+    def on_search_syllable(self, syllable: str):
+        word = self.search_syllable(syllable)
+        if word is None:
+            return []
+        return self.typist.act(word, self.human)
+
+    def on_bonus_life(self):
         self.bonus_mask = 0
 
-    def confirm_correct(self, word):
+    def on_correct_word(self, word):
         self.bonus_mask |= get_word_mask(word)
-        self.confirm_used(word)
+        self.on_use_word(word)
 
-    def confirm_used(self, word: str):
+    def on_use_word(self, word: str):
         for syllable in get_syllables(word):
             if syllable in self.syllables:
                 words = self.syllables[syllable]

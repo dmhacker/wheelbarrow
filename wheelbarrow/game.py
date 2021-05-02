@@ -3,7 +3,6 @@ from loguru import logger
 import strategy
 import json
 import time
-import random
 
 from selenium import webdriver
 from selenium.webdriver.common.desired_capabilities import DesiredCapabilities
@@ -93,8 +92,7 @@ class Round:
         self.bomb_pid = -2
         self.bomb_syllable = ""
         self.bomb_word = ""
-        self.searcher = strategy.Searcher(self.game.corpus)
-        self.human = self.game.human
+        self.bot = strategy.Bot(game.corpus, game.human)
 
     def start(self):
         while True:
@@ -126,41 +124,32 @@ class Round:
                         logger.info("Processed game update: {}", update)
                     elif action == "correctWord":
                         if update[1]["playerPeerId"] == self.my_pid:
-                            self.searcher.confirm_correct(self.bomb_word)
+                            self.bot.on_correct_word(self.bomb_word)
                         else:
-                            self.searcher.confirm_used(self.bomb_word)
+                            self.bot.on_use_word(self.bomb_word)
                         logger.info("Processed game update: {}", update)
                     elif action == "failWord":
                         if update[1] == self.my_pid:
-                            self.searcher.confirm_used(self.bomb_word)
+                            self.bot.on_use_word(self.bomb_word)
                             self.my_ready = True
                         else:
-                            self.searcher.confirm_used(self.bomb_word)
+                            self.bot.on_use_word(self.bomb_word)
                         logger.info("Processed game update: {}", update)
                     elif action == "bonusAlphabetCompleted":
                         if update[1] == self.my_pid:
-                            self.searcher.confirm_bonus()
+                            self.bot.on_bonus_life()
                         logger.info("Processed game update: {}", update)
             # We are given the bomb, so we should submit a word
             if self.my_pid == self.bomb_pid and self.my_ready:
-                word = self.searcher.search(self.bomb_syllable)
-                if word is not None:
-                    logger.info(
-                        "Found '{}' containing '{}'", word, self.bomb_syllable
-                    )
-                    if self.human:
-                        time.sleep(1.5 * random.random() + 0.5)
-                        for c in word + Keys.RETURN:
-                            time.sleep(random.random() * 0.07)
-                            actions = ActionChains(self.game.driver)
-                            actions.send_keys(c)
-                            actions.perform()
-                    else:
-                        actions = ActionChains(self.game.driver)
-                        actions.send_keys(word + Keys.RETURN)
-                        actions.perform()
-                    self.my_ready = False
+                actions = self.bot.on_search_syllable(self.bomb_syllable)
+                if actions == []:
+                    logger.warning("Unable to find word for '{}'!", self.bomb_syllable)
                 else:
-                    logger.warning(
-                        "No words left for syllable '{}'!", self.bomb_syllable
-                    )
+                    for (action, val) in actions:
+                        if action == "wait":
+                            time.sleep(val)
+                        elif action == "press":
+                            actions = ActionChains(self.game.driver)
+                            actions.send_keys(val)
+                            actions.perform()
+                    self.my_ready = False
