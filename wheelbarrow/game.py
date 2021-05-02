@@ -63,10 +63,11 @@ class Game:
         while self.pid == -1:
             for update in self.get_latest_updates():
                 action = update[0]
+                logger.info("Received game update: {}", update)
                 if action == "setup":
-                    print(update)
                     settings = update[1]
                     self.pid = settings["selfPeerId"]
+                    logger.info("Processed game update: {}", update)
                     break
         # Main loop: try joining a round, then playing, then repeating
         while True:
@@ -100,15 +101,15 @@ class Round:
             # Run through all observed updates to the game state
             for update in self.game.get_latest_updates():
                 action = update[0]
-                logger.info("Some update: {}", update)
+                logger.info("Received game update: {}", update)
                 if not self.started:
                     if action == "setMilestone":
                         settings = update[1]
                         if settings["name"] == "round":
-                            logger.info("Processed game update: {}", update)
                             self.bomb_pid = settings["currentPlayerPeerId"]
                             self.bomb_syllable = settings["syllable"]
                             self.started = True
+                            logger.info("Processed game update: {}", update)
                 else:
                     if action == "setMilestone":
                         settings = update[1]
@@ -116,36 +117,36 @@ class Round:
                             logger.info("Processed game update: {}", update)
                             return
                     elif action == "nextTurn":
-                        logger.info("Processed game update: {}", update)
                         self.bomb_pid = update[1]
                         self.bomb_syllable = update[2]
                         self.my_ready = True
+                        logger.info("Processed game update: {}", update)
                     elif action == "setPlayerWord":
-                        logger.info("Processed game update: {}", update)
                         self.bomb_word = update[2]
-                    elif action == "correctWord":
                         logger.info("Processed game update: {}", update)
+                    elif action == "correctWord":
                         if update[1]["playerPeerId"] == self.my_pid:
                             self.searcher.confirm_correct(self.bomb_word)
                         else:
                             self.searcher.confirm_used(self.bomb_word)
-                    elif action == "failWord":
                         logger.info("Processed game update: {}", update)
+                    elif action == "failWord":
                         if update[1] == self.my_pid:
                             self.searcher.confirm_used(self.bomb_word)
                             self.my_ready = True
                         else:
                             self.searcher.confirm_used(self.bomb_word)
-                    elif action == "bonusAlphabetCompleted":
                         logger.info("Processed game update: {}", update)
+                    elif action == "bonusAlphabetCompleted":
                         if update[1] == self.my_pid:
                             self.searcher.confirm_bonus()
+                        logger.info("Processed game update: {}", update)
             # We are given the bomb, so we should submit a word
             if self.my_pid == self.bomb_pid and self.my_ready:
                 word = self.searcher.search(self.bomb_syllable)
                 if word is not None:
                     logger.info(
-                        "Typing word '{}' for syllable '{}'", word, self.bomb_syllable
+                        "Found '{}' containing '{}'", word, self.bomb_syllable
                     )
                     if self.human:
                         time.sleep(1.5 * random.random() + 0.5)
