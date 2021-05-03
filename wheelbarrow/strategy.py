@@ -57,10 +57,15 @@ def get_word_ranking(word: str, word_mask: int, word_freq: int, player_mask: int
     prev_count = popcount(player_mask & AVAILABLE_MASK)
     next_count = popcount((player_mask | word_mask) & AVAILABLE_MASK)
     if human:
+        freq_level = 0
+        if word_freq > 400:
+            freq_level = 2
+        elif word_freq > 0:
+            freq_level = 1
         if lives < max_lives:
-            return (word_freq > 400, next_count - prev_count, -word_count)
+            return (freq_level, next_count - prev_count, -word_count)
         else:
-            return (word_freq, -len(word), -word_count)
+            return (freq_level, -len(word), -word_count)
     else:
         if lives < max_lives:
             return (next_count - prev_count, -word_count)
