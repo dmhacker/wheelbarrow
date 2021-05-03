@@ -2,24 +2,27 @@ from collections import defaultdict
 from loguru import logger
 from selenium.webdriver.common.keys import Keys
 
-import requests
 import string
+import requests
 import time
 import numpy as np
 import random
 
 
+BONUS_LETTERS = "abcdefghijlmnopqrstuvx"
+
+
 def get_word_mask(word: str):
     """
     A word mask is a number representing a subset
-    of the lowercase ASCII character set.
+    of the bonus letters character set.
     """
     mask = 0
     for c in set(word):
-        if c not in string.ascii_lowercase:
-            return None
+        if c not in BONUS_LETTERS:
+            continue
         tmp = 1
-        tmp <<= string.ascii_lowercase.index(c)
+        tmp <<= BONUS_LETTERS.index(c)
         mask |= tmp
     return mask
 
@@ -36,10 +39,15 @@ def get_syllables(word: str):
             yield word[i : i + window]
 
 
-AVAILABLE_MASK = ~get_word_mask("kwyz")
-
-
-def get_word_ranking(word: str, word_mask: int, word_freq: int, player_mask: int, human: bool, lives: int, max_lives: int):
+def get_word_ranking(
+    word: str,
+    word_mask: int,
+    word_freq: int,
+    player_mask: int,
+    human: bool,
+    lives: int,
+    max_lives: int,
+):
     """
     The word ranking system is at the heart of the bot.
     Given what the player's current bonus letters are, it will
@@ -53,9 +61,9 @@ def get_word_ranking(word: str, word_mask: int, word_freq: int, player_mask: int
         x = (x + (x >> 4)) & 0x0F0F0F0F0F0F0F0F
         return ((x * 0x0101010101010101) & 0xFFFFFFFFFFFFFFFF) >> 56
 
-    word_count = popcount(word_mask & AVAILABLE_MASK)
-    prev_count = popcount(player_mask & AVAILABLE_MASK)
-    next_count = popcount((player_mask | word_mask) & AVAILABLE_MASK)
+    word_count = popcount(word_mask)
+    prev_count = popcount(player_mask)
+    next_count = popcount(player_mask | word_mask)
     if human:
         freq_level = 0
         if word_freq > 400:
@@ -70,7 +78,7 @@ def get_word_ranking(word: str, word_mask: int, word_freq: int, player_mask: int
         if lives < max_lives:
             return (next_count - prev_count, -word_count)
         else:
-            return (-word_count)
+            return -word_count
 
 
 class Corpus:
@@ -85,7 +93,13 @@ class Corpus:
     def add_words(self, words: [str]):
         for word in words:
             mask = get_word_mask(word)
-            if mask is not None:
+            self.words[word] = (mask, 0)
+
+    def add_words_from_file(self, filename: str):
+        with open(filename, "r") as f:
+            for word_ in f.readlines():
+                word = word_.strip()
+                mask = get_word_mask(word)
                 self.words[word] = (mask, 0)
 
     def add_words_from_url(self, url: str):
@@ -118,14 +132,20 @@ def english_corpus():
     logger.info("Loading new English corpus ...")
     timestamp = time.time()
     corpus = Corpus()
-    # Known corporal additions
+    # Taken from https://www.reddit.com/r/BombParty/comments/64fhwy/the_complete_english_bombparty_dictionary/
     corpus.add_words_from_url("http://norvig.com/ngrams/sowpods.txt")
     logger.info("English corpus is now at {} words.", len(corpus.words))
     corpus.add_words_from_url("http://norvig.com/ngrams/enable1.txt")
     logger.info("English corpus is now at {} words.", len(corpus.words))
     corpus.add_words_from_url("https://pastebin.com/raw/UegdKLq8")
     logger.info("English corpus is now at {} words.", len(corpus.words))
-    corpus.add_frequencies_from_url("https://www.wordfrequency.info/samples/words_219k.txt")
+    # # Taken from the JKLM Discordian Parties dictionary
+    # corpus.add_words_from_file("corpus/words_v1.2.txt")
+    # logger.info("English corpus is now at {} words.", len(corpus.words))
+    # Frequencies list for the human player
+    corpus.add_frequencies_from_url(
+        "https://www.wordfrequency.info/samples/words_219k.txt"
+    )
     logger.info("Added frequencies to corpus.", len(corpus.words))
     logger.info(
         "Took {:.2f} seconds to load full English corpus.".format(
@@ -188,7 +208,9 @@ class Typist:
         actions = []
         actions.append(("wait", self.__initial_delay(len(word))))
         previous_errors = 0
-        fail_probability = (1.0 + (self.word_accuracy - 1) / (max_lives - 1) * (lives - 1))
+        fail_probability = 1.0 + (self.word_accuracy - 1) / (max_lives - 1) * (
+            lives - 1
+        )
         fail_destiny = random.random() > fail_probability
         fail_index = word.index(syllable) + len(syllable)
         fail_index += random.randrange(0, len(word) - fail_index + 1)
@@ -202,11 +224,15 @@ class Typist:
                     mc = random.choice(string.ascii_lowercase)
                     if j > 0 and i + j < len(word) and random.random() < 0.7:
                         mc = word[i + j]
-                    actions.append(("wait", self.__keystroke_delay(remaining, previous_errors)))
+                    actions.append(
+                        ("wait", self.__keystroke_delay(remaining, previous_errors))
+                    )
                     actions.append(("press", mc))
                 actions.append(("wait", self.__backtrack_delay()))
                 for _ in range(mistakes):
-                    actions.append(("wait", self.__keystroke_delay(remaining, previous_errors)))
+                    actions.append(
+                        ("wait", self.__keystroke_delay(remaining, previous_errors))
+                    )
                     actions.append(("press", Keys.BACKSPACE))
                 previous_errors += 1
             actions.append(("wait", self.__keystroke_delay(remaining, previous_errors)))
@@ -243,7 +269,16 @@ class Bot:
         word_map = self.syllables[syllable]
         words = list(word_map.items())
         (best_word, _) = max(
-            words, key=lambda x: get_word_ranking(x[0], x[1][0], x[1][1], self.bonus_mask, self.human, self.lives, self.max_lives)
+            words,
+            key=lambda x: get_word_ranking(
+                x[0],
+                x[1][0],
+                x[1][1],
+                self.bonus_mask,
+                self.human,
+                self.lives,
+                self.max_lives,
+            ),
         )
         return best_word
 
