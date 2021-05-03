@@ -39,7 +39,7 @@ def get_syllables(word: str):
 AVAILABLE_MASK = ~get_word_mask("kwyz")
 
 
-def get_word_ranking(word_mask: int, player_mask: int, lives: int, max_lives: int):
+def get_word_ranking(word: str, word_mask: int, player_mask: int, lives: int, max_lives: int):
     """
     The word ranking system is at the heart of the bot.
     Given what the player's current bonus letters are, it will
@@ -58,7 +58,7 @@ def get_word_ranking(word_mask: int, player_mask: int, lives: int, max_lives: in
     next_count = popcount((player_mask | word_mask) & AVAILABLE_MASK)
     if lives < max_lives:
         return (next_count - prev_count, -word_count)
-    return -word_count
+    return (-len(word), -word_count)
 
 
 class Corpus:
@@ -212,7 +212,7 @@ class Bot:
         word_map = self.syllables[syllable]
         words = list(word_map.items())
         (best_word, _) = max(
-            words, key=lambda x: get_word_ranking(x[1], self.bonus_mask, self.lives, self.max_lives)
+            words, key=lambda x: get_word_ranking(x[0], x[1], self.bonus_mask, self.lives, self.max_lives)
         )
         return best_word
 
