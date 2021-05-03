@@ -39,7 +39,7 @@ def get_syllables(word: str):
 AVAILABLE_MASK = ~get_word_mask("kwyz")
 
 
-def get_word_ranking(word: str, word_mask: int, player_mask: int, lives: int, max_lives: int):
+def get_word_ranking(word: str, word_mask: int, word_freq: int, player_mask: int, human: bool, lives: int, max_lives: int):
     """
     The word ranking system is at the heart of the bot.
     Given what the player's current bonus letters are, it will
@@ -56,9 +56,18 @@ def get_word_ranking(word: str, word_mask: int, player_mask: int, lives: int, ma
     word_count = popcount(word_mask & AVAILABLE_MASK)
     prev_count = popcount(player_mask & AVAILABLE_MASK)
     next_count = popcount((player_mask | word_mask) & AVAILABLE_MASK)
-    if lives < max_lives:
-        return (next_count - prev_count, -word_count)
-    return (-len(word), -word_count)
+    if human:
+        if lives < max_lives:
+            # TODO: For human players, find a better way to choose 
+            # high-frequency words while still optimizing for bonus pionts
+            return (next_count - prev_count, -word_count)
+        else:
+            return (word_freq, -len(word), -word_count)
+    else:
+        if lives < max_lives:
+            return (next_count - prev_count, -word_count)
+        else:
+            return (-word_count)
 
 
 class Corpus:
@@ -74,12 +83,29 @@ class Corpus:
         for word in words:
             mask = get_word_mask(word)
             if mask is not None:
-                self.words[word] = mask
+                self.words[word] = (mask, 0)
 
     def add_words_from_url(self, url: str):
         txt = requests.get(url).text.lower()
         words = txt.split()
         self.add_words(words)
+
+    def add_frequencies_from_url(self, url: str):
+        txt = requests.get(url).text.lower()
+        lines = txt.splitlines()
+        parsing = False
+        for line in lines:
+            data = line.split()
+            if parsing:
+                if len(data) >= 3:
+                    word = data[1]
+                    freq = int(data[2])
+                    if word in self.words:
+                        (mask, _) = self.words[word]
+                        self.words[word] = (mask, freq)
+            else:
+                if len(data) > 0 and data[0] == "rank":
+                    parsing = True
 
 
 def english_corpus():
@@ -96,6 +122,8 @@ def english_corpus():
     logger.info("English corpus is now at {} words.", len(corpus.words))
     corpus.add_words_from_url("https://pastebin.com/raw/UegdKLq8")
     logger.info("English corpus is now at {} words.", len(corpus.words))
+    corpus.add_frequencies_from_url("https://www.wordfrequency.info/samples/words_219k.txt")
+    logger.info("Added frequencies to corpus.", len(corpus.words))
     logger.info(
         "Took {:.2f} seconds to load full English corpus.".format(
             time.time() - timestamp
@@ -200,11 +228,11 @@ class Bot:
         self.syllables = defaultdict(dict)
         self.lives = 0
         self.max_lives = 0
-        for word, mask in corpus.words.items():
+        for word, data in corpus.words.items():
             if len(word) > 12 and human:
                 continue
             for syllable in get_syllables(word):
-                self.syllables[syllable][word] = mask
+                self.syllables[syllable][word] = data
 
     def search_syllable(self, syllable: str):
         if syllable not in self.syllables:
@@ -212,7 +240,7 @@ class Bot:
         word_map = self.syllables[syllable]
         words = list(word_map.items())
         (best_word, _) = max(
-            words, key=lambda x: get_word_ranking(x[0], x[1], self.bonus_mask, self.lives, self.max_lives)
+            words, key=lambda x: get_word_ranking(x[0], x[1][0], x[1][1], self.bonus_mask, self.human, self.lives, self.max_lives)
         )
         return best_word
 
