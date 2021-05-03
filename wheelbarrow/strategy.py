@@ -58,9 +58,7 @@ def get_word_ranking(word: str, word_mask: int, word_freq: int, player_mask: int
     next_count = popcount((player_mask | word_mask) & AVAILABLE_MASK)
     if human:
         if lives < max_lives:
-            # TODO: For human players, find a better way to choose 
-            # high-frequency words while still optimizing for bonus pionts
-            return (next_count - prev_count, -word_count)
+            return (word_freq > 400, next_count - prev_count, -word_count)
         else:
             return (word_freq, -len(word), -word_count)
     else:
