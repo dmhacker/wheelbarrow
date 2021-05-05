@@ -17,6 +17,7 @@ TODO
 ## Limitations
 
 These are known limitations that may or may not be addressed in the future:
+* The bot only works with Chromium v90 on Linux.
 * The bot can only join rooms that have been created and cannot create rooms on its own.
 * If a room is not set to the Bomb Party mode, it will crash.
 * It only works on English Bomb Party rooms.
