@@ -263,10 +263,12 @@ class Bot:
             for syllable in get_syllables(word):
                 self.syllables[syllable][word] = data
 
-    def search_syllable(self, syllable: str):
+    def on_search_syllable(self, syllable: str):
         if syllable not in self.syllables:
-            return None
+            return []
         word_map = self.syllables[syllable]
+        if len(word_map) == 0:
+            return []
         words = list(word_map.items())
         (best_word, _) = max(
             words,
@@ -280,13 +282,9 @@ class Bot:
                 self.max_lives,
             ),
         )
-        return best_word
-
-    def on_search_syllable(self, syllable: str):
-        word = self.search_syllable(syllable)
-        if word is None:
-            return []
-        return self.typist.act(word, syllable, self.human, self.lives, self.max_lives)
+        return self.typist.act(
+            best_word, syllable, self.human, self.lives, self.max_lives
+        )
 
     def on_start(self, lives, max_lives):
         self.lives = lives
