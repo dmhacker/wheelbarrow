@@ -1,7 +1,5 @@
 # wheelbarrow
 
-![Wheelbarrow Robot]( | width=3o00)
-
 <img src="https://upload.wikimedia.org/wikipedia/commons/3/37/Remotely_controlled_bomb_disposal_tool.JPG" width="277" height="208" />
 
 wheelbarrow is a bot that plays JKLM's Bomb Party mode. The bot was designed to be somewhat intelligent:
@@ -12,7 +10,34 @@ The name was chosen as a reference to the British [Wheelbarrow robot](https://en
 
 ## Usage
 
-TODO
+wheelbarrow needs the following dependencies installed on your system:
+* Python 3.8+
+* Chromium v90
+
+The bot works by spawning a Chromium browser and controlling it via Selenium.
+In order to acquire Selenium and other Python dependencies, it is recommended
+you first set up a virtualenv inside the top level folder after cloning like such:
+
+```
+virtualenv venv
+source venv/bin/activate
+```
+
+Before running it, then install all required Python packages:
+
+```
+pip install -r requirements.txt
+```
+
+In order to run the bot, you can use the following command from the root folder:
+
+```
+python wheelbarrow <XXXX>
+```
+
+where XXXX is the 4-letter JKLM room code. By default, human mode is disabled,
+making the bot type in its responses instantly. You can enable human mode
+by passing in the `--human` flag.
 
 ## Limitations
 
