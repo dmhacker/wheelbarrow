@@ -3,6 +3,7 @@ from loguru import logger
 import strategy
 import json
 import time
+import random
 
 from selenium import webdriver
 from selenium.webdriver.common.desired_capabilities import DesiredCapabilities
@@ -25,6 +26,7 @@ class Game:
             desired_capabilities=capabilities,
         )
         self.pid = -1
+        self.usernames = strategy.usernames_corpus()
         self.corpus = strategy.english_corpus()
 
     def get_latest_updates(self):
@@ -62,6 +64,10 @@ class Game:
         self.driver.get(self.url)
         # Wait a bit until the page loads and then join the game
         time.sleep(1)
+        username_input = self.driver.find_element_by_xpath('//input[@placeholder="Your name"]')
+        username = random.choice(list(self.usernames.words.keys()))
+        username_input.send_keys(username)
+        time.sleep(0.5)
         button = self.driver.find_element_by_xpath('//button[text()="OK"]')
         button.click()
         # Switch into the iframe encapsulating the game

@@ -125,6 +125,23 @@ class Corpus:
                     parsing = True
 
 
+def usernames_corpus():
+    """
+    A corpus representing possible usernames to pick from.
+    Picking a username gives more credibility to the bot.
+    """
+    logger.info("Loading usernames list ...")
+    timestamp = time.time()
+    corpus = Corpus()
+    corpus.add_words_from_file("corpora/xato-net-10-million-usernames-dup.txt")
+    logger.info(
+        "Took {:.2f} seconds to load usernames list.".format(
+            time.time() - timestamp
+        )
+    )
+    return corpus
+
+
 def english_corpus():
     """
     The standard corpus for the English language.
@@ -134,19 +151,14 @@ def english_corpus():
     corpus = Corpus()
     # Taken from https://www.reddit.com/r/BombParty/comments/64fhwy/the_complete_english_bombparty_dictionary/
     corpus.add_words_from_url("http://norvig.com/ngrams/sowpods.txt")
-    logger.info("English corpus is now at {} words.", len(corpus.words))
     corpus.add_words_from_url("http://norvig.com/ngrams/enable1.txt")
-    logger.info("English corpus is now at {} words.", len(corpus.words))
     corpus.add_words_from_url("https://pastebin.com/raw/UegdKLq8")
-    logger.info("English corpus is now at {} words.", len(corpus.words))
     # # Taken from the JKLM Discordian Parties dictionary
     # corpus.add_words_from_file("corpus/words_v1.2.txt")
-    # logger.info("English corpus is now at {} words.", len(corpus.words))
     # Frequencies list for the human player
     corpus.add_frequencies_from_url(
         "https://www.wordfrequency.info/samples/words_219k.txt"
     )
-    logger.info("Added frequencies to corpus.", len(corpus.words))
     logger.info(
         "Took {:.2f} seconds to load full English corpus.".format(
             time.time() - timestamp
@@ -163,7 +175,7 @@ class Typist:
     """
 
     def __init__(self):
-        self.word_accuracy = 0.8
+        self.word_accuracy = 0.85
         self.keystroke_accuracy = 0.92
         self.keystroke_delay_avg = 0.11
         self.keystroke_delay_std = 0.04
@@ -212,8 +224,9 @@ class Typist:
             lives - 1
         )
         fail_destiny = random.random() > fail_probability
-        fail_index = word.index(syllable) + len(syllable)
-        fail_index += random.randrange(0, len(word) - fail_index + 1)
+        # fail_index = word.index(syllable) + len(syllable)
+        # fail_index += random.randrange(0, len(word) - fail_index + 1)
+        fail_index = random.randrange(0, len(word))
         for i, c in enumerate(word):
             if fail_destiny and fail_index == i:
                 break
