@@ -46,10 +46,13 @@ class Game:
             logger.info("Received game update: {}", update)
             if action == "setup":
                 settings = update[1]
-                self.pid = settings["selfPeerId"]
-                self.starting_lives = settings["rules"]["startingLives"]["value"]
-                self.max_lives = settings["rules"]["maxLives"]["value"]
-                logger.info("Processed game update: {}", update)
+                if "rules" in settings and "startingLives" in settings["rules"]:
+                    self.pid = settings["selfPeerId"]
+                    self.starting_lives = settings["rules"]["startingLives"]["value"]
+                    self.max_lives = settings["rules"]["maxLives"]["value"]
+                    logger.info("Processed game update: {}", update)
+                else:
+                    raise ValueError("Room is not in Bomb Party mode")
             elif action == "setRules":
                 settings = update[1]
                 if "startingLives" in settings:
@@ -82,7 +85,7 @@ class Game:
                 self.driver.switch_to.frame(frame)
                 switched = True
             except NoSuchElementException:
-                pass
+                raise ValueError("Could not find the game's iframe")
         # Wait until we've completed setup before proceeding
         while self.pid == -1:
             self.handle_updates()
@@ -96,9 +99,9 @@ class Game:
                 )
                 button.click()
                 Round(self).start()
-            except ElementNotInteractableException:
-                pass
             except NoSuchElementException:
+                raise ValueError("Could not find the button to join the game")
+            except ElementNotInteractableException:
                 pass
 
 
